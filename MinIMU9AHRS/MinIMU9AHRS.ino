@@ -1,14 +1,41 @@
-#include <WSWire.h>
-#include <TimerOne.h>
-#define IMU_V5
-#define Time 0.1
+/*
+
+MinIMU-9-Arduino-AHRS
+Pololu MinIMU-9 + Arduino AHRS (Attitude and Heading Reference System)
+
+Copyright (c) 2011-2016 Pololu Corporation.
+http://www.pololu.com/
+
+MinIMU-9-Arduino-AHRS is based on sf9domahrs by Doug Weibel and Jose Julio:
+http://code.google.com/p/sf9domahrs/
+
+sf9domahrs is based on ArduIMU v1.5 by Jordi Munoz and William Premerlani, Jose
+Julio and Doug Weibel:
+http://code.google.com/p/ardu-imu/
+
+MinIMU-9-Arduino-AHRS is free software: you can redistribute it and/or modify it
+under the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your option)
+any later version.
+
+MinIMU-9-Arduino-AHRS is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for
+more details.
+
+You should have received a copy of the GNU Lesser General Public License along
+with MinIMU-9-Arduino-AHRS. If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
 // Uncomment the following line to use a MinIMU-9 v5 or AltIMU-10 v5. Leave commented for older IMUs (up through v4).
+#define IMU_V5
 
 // Uncomment the below line to use this axis definition:
    // X axis pointing forward
    // Y axis pointing to the right
    // and Z axis pointing down.
-// Positive pitch : nose up`
+// Positive pitch : nose up
 // Positive roll : right wing down
 // Positive yaw : clockwise
 int SENSOR_SIGN[9] = {1,1,1,-1,-1,-1,1,1,1}; //Correct directions x,y,z - gyro, accelerometer, magnetometer
@@ -22,6 +49,9 @@ int SENSOR_SIGN[9] = {1,1,1,-1,-1,-1,1,1,1}; //Correct directions x,y,z - gyro, 
 //int SENSOR_SIGN[9] = {1,-1,-1,-1,1,1,1,-1,-1}; //Correct directions x,y,z - gyro, accelerometer, magnetometer
 
 // tested with Arduino Uno with ATmega328 and Arduino Duemilanove with ATMega168
+
+#include <Wire.h>
+
 // accelerometer: 8 g sensitivity
 // 3.9 mg/digit; 1 g = 256
 #define GRAVITY 256  //this equivalent to 1G in the raw data coming from the accelerometer
@@ -40,13 +70,21 @@ int SENSOR_SIGN[9] = {1,1,1,-1,-1,-1,1,1,1}; //Correct directions x,y,z - gyro, 
 
 // LSM303/LIS3MDL magnetometer calibration constants; use the Calibrate example from
 // the Pololu LSM303 or LIS3MDL library to find the right values for your board
-#define M_X_MIN -1198
-#define M_Y_MIN -5962
-#define M_Z_MIN +2286
-#define M_X_MAX +5074
-#define M_Y_MAX -438
-#define M_Z_MAX +7739
 
+#define M_X_MIN -388
+#define M_Y_MIN -8860
+#define M_Z_MIN +132
+#define M_X_MAX 5922
+#define M_Y_MAX -2965
+#define M_Z_MAX 5533
+/*
+#define M_X_MIN -1000
+#define M_Y_MIN -1000
+#define M_Z_MIN -1000
+#define M_X_MAX 1000
+#define M_Y_MAX 1000
+#define M_Z_MAX 1000
+*/
 #define Kp_ROLLPITCH 0.02
 #define Ki_ROLLPITCH 0.00002
 #define Kp_YAW 1.2
@@ -103,74 +141,27 @@ float errorYaw[3]= {0,0,0};
 unsigned int counter=0;
 byte gyro_sat=0;
 
-float DCM_Matrix[3][3]= {  {1,0,0}  ,  {0,1,0}  , {0,0,1}  };
+float DCM_Matrix[3][3]= {
+  {
+    1,0,0  }
+  ,{
+    0,1,0  }
+  ,{
+    0,0,1  }
+};
 float Update_Matrix[3][3]={{0,1,2},{3,4,5},{6,7,8}}; //Gyros here
 
 
-float Temporary_Matrix[3][3]={  {0,0,0}  ,  {0,0,0}  , {0,0,0}  };
-
-
-#define KALMAN
-
-#define MotorLeftDir1 A0
-#define MotorLeftDir2 A2
-#define MotorLeftPWM 8
-#define MotorRightDir1 A3
-#define MotorRightDir2 A7
-#define MotorRightPWM 3
-#define Kp 6
-#define Kd 0.03
-#define Ki 0
-#define BasePWM_L 191
-#define BasePWM_R 159
-long int timer_begin;
-float const_corr,angle,Difference_Error,Inte_Error,Prev_Error=0,measured_value;
-int ref=0,PWM,LeftPWM,RightPWM;
-float RightPWMIdeal;
-float yaw_angle;
-float timelag_check=0;
-
-
-struct kalman
-{
-  float q;  //process noise covariance
-  float r;  //measurement noise covariance
-  float x;  //estimated value
-  float p;  //error in estimate
-  float k;  //kalman gain
-}; 
-typedef kalman Kalman;
-Kalman raw;
-Kalman *kf=&raw;
-
-struct alphabeta{
-  float alpha;
-  float beta;
-  float Theta;
-  float rk; // prediction erroe
-  float Theta_previous;
-  float Thetaintegrate;
-  float Thetaintegrate_previous;
+float Temporary_Matrix[3][3]={
+  {
+    0,0,0  }
+  ,{
+    0,0,0  }
+  ,{
+    0,0,0  }
 };
 
-typedef alphabeta Alphabeta;
-Alphabeta yaw_ab;
-Alphabeta *pyaw=&yaw_ab;
-
-
-void update_kalman(Kalman *kf,float measured_value);
-
-void kalman_init(Kalman *kf,float qq,float rr,float pp,float initial_estimate);
-
-//void kalman_init(Kalman *praw,float qq,float rr,float pp,float initial_estimate)
-//void update_kalman(Kalman *praw,measured_value)
-
-
-
-int PID(float Error);
-
-
-void setupIMU(void)
+void setup()
 {
   Serial.begin(115200);
   pinMode (STATUS_LED,OUTPUT);  // Status LED
@@ -197,7 +188,7 @@ void setupIMU(void)
     delay(20);
     }
 
-  for(int y=0; y<6; y++)  
+  for(int y=0; y<6; y++)
     AN_OFFSET[y] = AN_OFFSET[y]/32;
 
   AN_OFFSET[5]-=GRAVITY*SENSOR_SIGN[5];
@@ -214,9 +205,10 @@ void setupIMU(void)
   counter=0;
 }
 
-void getValues(void)
+void loop() //Main Loop
 {
-  
+  if((millis()-timer)>=20)  // Main loop runs at 50Hz
+  {
     counter++;
     timer_old = timer;
     timer=millis();
@@ -249,154 +241,10 @@ void getValues(void)
     Drift_correction();
     Euler_angles();
     // ***
-    
 
-   printdata();
-}
-
-int PID(float Error)
-{
-  float Final_Error;
-  Difference_Error=Error-Prev_Error;
-  Inte_Error+=Error;
-  Final_Error=Kp*(Error)+Kd*(Difference_Error)+Ki*(Inte_Error);
-  Prev_Error=Error;
-  return (int)Final_Error;
-}
-char received[3];
-int const_corr_rec;
-void setup() {
-  Serial.begin(9600);
-  pinMode(MotorLeftDir1,OUTPUT);
-  pinMode(MotorRightDir1,OUTPUT);
-  pinMode(MotorLeftDir2,OUTPUT);
-  pinMode(MotorRightDir2,OUTPUT);
-  pinMode(MotorLeftPWM,OUTPUT);
-  pinMode(MotorRightPWM,OUTPUT);
-//  Serial.println("enter");
-
-  
-  kalman_init(kf,50,50,50,50);
-  alphabeta_init(pyaw,0.99,0.005,1,1,0,0,0);
-
-    
-  setupIMU();
-
-  //  Serial.println("exit");
-
-  timer_begin=millis();
-  while(1)
-  {
-    //Serial.println("atak gya");
-    getValues();
-    // printdata();
-    // Serial.println(MAG_Heading*180/3.14);
-    
-    if(((ToDeg(roll)<1.00)&&(ToDeg(roll)>-1.00))&&((ToDeg(pitch)<1.00)&&(ToDeg(pitch)>-1.00))&&((millis()-timer_begin)>13000))
-    {
-       const_corr=ToDeg(yaw);
-     // const_corr=MAG_Heading*180/3.14;
-      
-       break;
-    }
-    
-    
+    //printdata();
+    Serial.println (MAG_Heading*(180/3.14));    
+    delay(50);
   }
-  
-  //delay(1000);
- // const_corr=60;
-  //Serial.println("working");
-  digitalWrite(MotorLeftDir1,HIGH);
-  digitalWrite(MotorLeftDir2,  LOW);
-  digitalWrite(MotorRightDir1,HIGH);
-  digitalWrite(MotorRightDir2,LOW);  
-  
+
 }
-
-/*
-int i=2;
-bool stringComplete = false;
-*/
-void loop() {
-/*
-   receiveSerial();  */  
-   if((millis()-timer)>=10)  // Main loop runs at 50Hz
-  {
-   getValues();
-  // const_corr_rec = (received[2]-'0')*100 + (received[1]-'0')*10 + (received[0]-'0');
- //  const_corr=const_corr_rec-180;
-  
- update_kalman(kf,ToDeg(yaw));   
-  if(millis()-timelag_check>=3)
-  {
-      
-   timelag_check=millis();
-  alphabeta_update(pyaw,ToDeg(yaw));
-  } 
- //         TEST FILTERS 
-//    Serial.print(ToDeg(yaw));
-//    L̥
-//    Serial.print("     "+ String(kf->x));
-//    
-//    Serial.println("     "+ String(pyaw->Theta));
-//    
-
-  angle=(kf->x)-const_corr;
-
-//  Serial.print(const_corr);
-//  Serial.print(" "); 
-//
-//  Serial.println(kf->x);
-//  
- 
-  if(angle<(-180))
-  {
-    angle=360-angle;
-  }
-  if(angle>(180))
-  {
-    angle=angle-360;
-  } 
-   PWM=PID(angle);
-  // Serial.println(angle);
-   LeftPWM=BasePWM_L-PWM;
-   RightPWMIdeal=BasePWM_R+PWM;
-
-    if(LeftPWM>255) LeftPWM=255;
-    else if(LeftPWM<0) LeftPWM=0;
-
-    if(RightPWMIdeal>255) RightPWMIdeal=255;
-    else if(RightPWMIdeal<0) RightPWMIdeal=0;
-
-  //  Serial.println(LeftPWM);
-   // Serial.println(RightPWMIdeal);
-    
-   // RightPWMIdeal*=(0.8235);
-    RightPWM=(int)RightPWMIdeal;
-  // Serial.println(LeftPWM);
-   // Serial.println(RightPWM);
-   analogWrite(MotorLeftPWM,LeftPWM);
-   analogWrite(MotorRightPWM,RightPWM);
-  
-  } 
- 
-}
-/*
-void receiveSerial()
-{ while(Serial.available())
-   {
-    if(!stringComplete)
-    { received[i]=Serial.read();
-   //  Serial.println("Rec   "+String(received[i]));
-     i--;
-    }
-     if(i<0){ i = 2;
-     stringComplete = true;}
-     
-    }
-    if(stringComplete)
-    {
-      const_corr_rec = (received[2]-'0')*100 + (received[1]-'0')*10 + (received[0]-'0');
-      stringComplete = false;
-    }
-}*/

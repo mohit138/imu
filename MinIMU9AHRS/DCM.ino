@@ -75,7 +75,7 @@ void Drift_correction(void)
   Accel_magnitude = Accel_magnitude / GRAVITY; // Scale to gravity.
   // Dynamic weighting of accelerometer info (reliability filter)
   // Weight for accelerometer info (<0.5G = 0.0, 1G = 1.0 , >1.5G = 0.0)
-  Accel_weight = constrain(1 - 2*abs(1 - Accel_magnitude),0,1);  //  
+  Accel_weight = constrain(1 - 2*abs(1 - Accel_magnitude), 0, 1);  //  
 
   Vector_Cross_Product(&errorRollPitch[0],&Accel_Vector[0],&DCM_Matrix[2][0]); //adjust the ground of reference
   Vector_Scale(&Omega_P[0],&errorRollPitch[0],Kp_ROLLPITCH*Accel_weight);
